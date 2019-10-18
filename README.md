@@ -1,4 +1,4 @@
 # Arquivos-Indexados
-Disciplina de algoritmos e estrutura de dados II
+Disciplina de Algoritmos e Estrutura de Dados II
 
-O objetivo é ruinir uma grande quantidade de dados para implementar organizações de Arquivos com índices. Estes dados serão buscados com o auxílio de uma API na rede social Twitter, serão armazenados como registros de tamanho fixo e após manipulados de forma binária.
+O objetivo é implementar organizações de Arquivos com índices reunindo uma grande quantidade de dados que serão buscados com o auxílio de uma API na rede social Twitter. Os dados serão armazenados como registros de tamanho fixo e após manipulados de forma binária com o auxílio de funções seek.
