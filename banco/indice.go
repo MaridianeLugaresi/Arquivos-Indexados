@@ -11,7 +11,7 @@ import (
 const inicioArquivo = 0
 const finalArquivo = 2
 
-var duplicado error = errors.New("chave duplicada")
+var Duplicado error = errors.New("chave duplicada")
 
 type IndicePrimario struct {
 	file *os.File
@@ -56,7 +56,7 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 		i.file.Read(aux)
 		chave, _ = binary.Varint(aux[0:10])
 		if chave == id {
-			return duplicado
+			return Duplicado
 		}
 		if chave < id {
 			//achamos o registro que é menor que o id passado
