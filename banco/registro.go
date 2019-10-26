@@ -22,6 +22,8 @@ type Tweet struct {
 type Hashtag struct {
 	ID    int64  // 10 bytes
 	Texto string // 100 bytes
+	// Campos ignorados no banco
+	TotalTweets int64
 }
 
 func (t Tweet) Converte() []byte {
@@ -71,4 +73,8 @@ func (h *Hashtag) Desconverte(aux []byte) error { //ponteiro para poder alterar 
 
 func (h Hashtag) IDRegistro() int64 {
 	return h.ID
+}
+
+func (h *Hashtag) CadastraIDRegistro(id int64) {
+	h.ID = id
 }
