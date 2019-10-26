@@ -2,28 +2,19 @@ package banco
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 )
 
-//https://golang.org/pkg/os/#File.Seek
-const inicioArquivo = 0
-const finalArquivo = 2
-const tamanhoIndice = 20
-
-var Duplicado error = errors.New("chave duplicada")
-var NaoEncontrado error = errors.New("registro não encontrado")
-
-type IndicePrimario struct {
+type IndiceSecundarioNeN struct {
 	file *os.File
 	size int64
 }
 
-func NovoIndicePrimario(table string) (*IndicePrimario, error) {
-	file, err := os.OpenFile(table+"-indice-primario.bin", os.O_RDWR|os.O_CREATE, 0777)
+func NovoIndiceSecundarioNeN(nome string) (*IndiceSecundarioNeN, error) {
+	file, err := os.OpenFile(nome+"-relacao.bin", os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		return nil, err
 	}
@@ -31,13 +22,13 @@ func NovoIndicePrimario(table string) (*IndicePrimario, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &IndicePrimario{
-		file: file,
+	return &IndiceSecundarioNeN{
 		size: stat.Size(),
+		file: file,
 	}, nil
 }
 
-func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
+func (i *IndiceSecundarioNeN) Inserir(idPrincipal, idSecundario int64) error {
 	deslocamento := int64(0)
 	var chave int64
 	for {
@@ -51,11 +42,11 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 			if err != nil {
 				return fmt.Errorf("falha ao ler o restante do arquivo, err: %v", err)
 			}
-			i.file.Seek(0, inicioArquivo)
+			i.file.Seek(0, inicioArquivo) // voltamos o cursor para a posição antiga
 			//escreve na proxima posiçao
 			aux := make([]byte, tamanhoIndice)
-			binary.PutVarint(aux[0:10], id)
-			binary.PutVarint(aux[10:20], endereco)
+			binary.PutVarint(aux[0:10], idPrincipal)
+			binary.PutVarint(aux[10:20], idSecundario)
 			n, err := i.file.Write(aux)
 			if err != nil {
 				return fmt.Errorf("falha ao escrever no arquivo de indice, err: %v", err)
@@ -68,14 +59,11 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 			return nil
 		}
 		deslocamento -= tamanhoIndice
-		i.file.Seek(deslocamento, finalArquivo)
 		aux := make([]byte, tamanhoIndice)
+		i.file.Seek(deslocamento, finalArquivo)
 		i.file.Read(aux)
 		chave, _ = binary.Varint(aux[0:10])
-		if chave == id {
-			return Duplicado
-		}
-		if chave < id {
+		if chave <= idPrincipal {
 			//achamos o registro que é menor que o id passado
 			i.file.Seek(deslocamento+tamanhoIndice, finalArquivo)
 			restante, err := ioutil.ReadAll(i.file) // ReadAll le todo o arquivo a partir da posição atual e ao final, o cursor vai estar apontando para o final do arquivo
@@ -85,8 +73,8 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 			i.file.Seek(deslocamento+tamanhoIndice, finalArquivo) // voltamos o cursor para a posição antiga
 			//escreve na proxima posiçao
 			aux := make([]byte, tamanhoIndice)
-			binary.PutVarint(aux[0:10], id)
-			binary.PutVarint(aux[10:20], endereco)
+			binary.PutVarint(aux[0:10], idPrincipal)
+			binary.PutVarint(aux[10:20], idSecundario)
 			n, err := i.file.Write(aux)
 			if err != nil {
 				return fmt.Errorf("falha ao escrever no arquivo de indice, err: %v", err)
@@ -101,16 +89,15 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 	}
 }
 
-// Busca por um ID retornando o endereço associado
-func (i *IndicePrimario) Busca(chave int64) (int64, error) {
+func (i *IndiceSecundarioNeN) BuscaPorIDPrimario(id int64) ([]int64, error) {
 	qtdRegistros := i.size / tamanhoIndice
 	if qtdRegistros == 0 {
-		return 0, NaoEncontrado
+		return []int64{}, NaoEncontrado
 	}
-	return i.buscaBinaria(chave, 0, qtdRegistros-1)
+	return i.buscaBinariaIDPrimario(id, 0, qtdRegistros-1)
 }
 
-func (i *IndicePrimario) buscaBinaria(chave, inicio, fim int64) (int64, error) {
+func (i *IndiceSecundarioNeN) buscaBinariaIDPrimario(chave, inicio, fim int64) ([]int64, error) {
 	meio := ((inicio + fim) / 2)
 	i.file.Seek(meio*tamanhoIndice, inicioArquivo)
 	aux := make([]byte, tamanhoIndice)
@@ -118,20 +105,59 @@ func (i *IndicePrimario) buscaBinaria(chave, inicio, fim int64) (int64, error) {
 	if err != nil && n != len(aux) {
 		log.Fatalf("falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
 	}
-	id, _ := binary.Varint(aux[0:10])
-	if id == chave {
-		endereco, _ := binary.Varint(aux[10:20])
-		return endereco, nil
+	idPrimario, _ := binary.Varint(aux[0:10])
+	if idPrimario == chave {
+		idSecundario, _ := binary.Varint(aux[10:20])
+		ids := []int64{idSecundario}
+		deslocamento := meio * tamanhoIndice
+		for {
+			deslocamento -= tamanhoIndice
+			if deslocamento < 0 {
+				// inicio do arquivo
+				break
+			}
+			i.file.Seek(deslocamento, inicioArquivo)
+			n, err := i.file.Read(aux)
+			if err != nil && n != len(aux) {
+				log.Fatalf("falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
+			}
+			idPrimario, _ := binary.Varint(aux[0:10])
+			if idPrimario != chave {
+				break
+			}
+			idSecundario, _ := binary.Varint(aux[10:20])
+			ids = append(ids, idSecundario)
+		}
+		deslocamento = meio * tamanhoIndice
+		for {
+			deslocamento += tamanhoIndice
+			if deslocamento > i.size {
+				// fim do arquivo
+				break
+			}
+			i.file.Seek(deslocamento, inicioArquivo)
+			n, err := i.file.Read(aux)
+			if err != nil && n != len(aux) {
+				log.Fatalf("falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
+			}
+			idPrimario, _ := binary.Varint(aux[0:10])
+			if idPrimario != chave {
+				break
+			}
+			idSecundario, _ := binary.Varint(aux[10:20])
+			ids = append(ids, idSecundario)
+		}
+		return ids, nil
 	}
 	if inicio >= fim {
-		return 0, NaoEncontrado
+		return []int64{}, NaoEncontrado
 	}
-	if chave < id {
-		return i.buscaBinaria(chave, inicio, meio-1)
+	if chave < idPrimario {
+		return i.buscaBinariaIDPrimario(chave, inicio, meio-1)
 	}
-	return i.buscaBinaria(chave, meio+1, fim)
+	return i.buscaBinariaIDPrimario(chave, meio+1, fim)
 }
 
-func (i *IndicePrimario) Close() error {
+func (i *IndiceSecundarioNeN) Close() error {
 	return i.file.Close()
 }
