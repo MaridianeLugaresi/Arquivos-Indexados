@@ -32,6 +32,7 @@ func NovaTabelaTweets(tabelaHashtags *TabelaHashtags) (*TabelaTweets, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	stats, err := file.Stat()
 	if err != nil {
 		return nil, err
@@ -70,6 +71,7 @@ func (t *TabelaTweets) Inserir(tweet Tweet) error {
 func (t *TabelaTweets) BuscaPorHashtag(hashtagID int64) ([]Tweet, error) {
 	ids := t.tabelaHashtags.TweetsIDsComHashtag(hashtagID)
 	tweets := make([]Tweet, 0, len(ids))
+	//range faz iteração em todos os elementos do array
 	for _, id := range ids {
 		tweet := Tweet{}
 		err := t.BuscaPorID(id, &tweet)
@@ -77,6 +79,7 @@ func (t *TabelaTweets) BuscaPorHashtag(hashtagID int64) ([]Tweet, error) {
 			log.Printf("Falha ao buscar Tweet com ID: %d com a hashtagID: %d, err: %v", id, hashtagID, err)
 			continue
 		}
+		//append adiciona um elemento no slice
 		tweets = append(tweets, tweet)
 	}
 	return tweets, nil
@@ -95,11 +98,11 @@ func (t *TabelaTweets) BuscaPorEndereco(endereco int64, tweet *Tweet) error {
 	aux := make([]byte, t.tamanhoRegistro)
 	n, err := t.file.Read(aux)
 	if err != nil && n != int(t.tamanhoRegistro) {
-		return fmt.Errorf("falha ao buscar o tweet no endereco %d, err: %v", endereco, err)
+		return fmt.Errorf("Falha ao buscar o tweet no endereco %d, err: %v", endereco, err)
 	}
 	err = tweet.Desconverte(aux)
 	if err != nil {
-		return fmt.Errorf("falha ao desconverter o tweet, err: %v", err)
+		return fmt.Errorf("Falha ao desconverter o tweet, err: %v", err)
 	}
 	tweet.Hashtags, err = t.tabelaHashtags.BuscaHashtagsPorTweet(tweet.ID)
 	return err
@@ -108,11 +111,11 @@ func (t *TabelaTweets) BuscaPorEndereco(endereco int64, tweet *Tweet) error {
 func (t *TabelaTweets) Close() {
 	err := t.indicePrimario.Close()
 	if err != nil {
-		log.Printf("erro fechando indice primario, err: %v", err)
+		log.Printf("Erro fechando indice primario, err: %v", err)
 	}
 	err = t.file.Close()
 	if err != nil {
-		log.Printf("erro fechando arquivo de dados, err: %v", err)
+		log.Printf("Erro fechando arquivo de dados, err: %v", err)
 	}
 }
 
@@ -166,6 +169,7 @@ func (t *TabelaHashtags) Inserir(hashtag *Hashtag) error {
 	return nil
 }
 
+//relação n-n faz a ligação entre a tabela de Hashtag e a tabela  de Tweet
 func (t *TabelaHashtags) VincularTweet(tweet Tweet) error {
 	for _, hashtag := range tweet.Hashtags {
 		err := t.indiceTweetHashtag.Inserir(tweet.ID, hashtag.ID)
@@ -212,7 +216,7 @@ func (t *TabelaHashtags) BuscaHashtagsPorTweet(tweetID int64) ([]Hashtag, error)
 	for i, id := range hashtagIDs {
 		err = t.BuscaPorID(id, &hashtags[i])
 		if err != nil {
-			log.Printf("falha ao buscar hashtags com o ID %d, err: %v", id, err)
+			log.Printf("Falha ao buscar hashtags com o ID %d, err: %v", id, err)
 		}
 	}
 	return hashtags, nil
@@ -248,7 +252,7 @@ func (t *TabelaHashtags) ListaHashtagsComCounts() (map[int64]*Hashtag, error) {
 			break
 		}
 		if err != nil && n != len(aux) {
-			log.Fatalf("falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
+			log.Fatalf("Falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
 		}
 		hashtagID, _ := binary.Varint(aux[10:20])
 		hashtags[hashtagID].TotalTweets++
@@ -268,7 +272,7 @@ func (t *TabelaHashtags) TweetsIDsComHashtag(hashtagID int64) []int64 {
 			break
 		}
 		if err != nil && n != len(aux) {
-			log.Fatalf("falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
+			log.Fatalf("Falhou ao ler os valores do arquivo de indice, leu %d bytes, err: %v", n, err)
 		}
 		hID, _ := binary.Varint(aux[10:20])
 		if hashtagID == hID {
@@ -283,18 +287,18 @@ func (t *TabelaHashtags) TweetsIDsComHashtag(hashtagID int64) []int64 {
 func (t *TabelaHashtags) Close() {
 	err := t.indicePrimario.Close()
 	if err != nil {
-		log.Printf("erro fechando indice primario, err: %v", err)
+		log.Printf("Erro fechando indice primario, err: %v", err)
 	}
 	err = t.indiceTexto.Close()
 	if err != nil {
-		log.Printf("erro fechando indice hashtag, err: %v", err)
+		log.Printf("Erro fechando indice hashtag, err: %v", err)
 	}
 	err = t.indiceTweetHashtag.Close()
 	if err != nil {
-		log.Printf("erro fechando indice hashtag, err: %v", err)
+		log.Printf("Erro fechando indice hashtag, err: %v", err)
 	}
 	err = t.file.Close()
 	if err != nil {
-		log.Printf("erro fechando arquivo de dados, err: %v", err)
+		log.Printf("Erro fechando arquivo de dados, err: %v", err)
 	}
 }

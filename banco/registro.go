@@ -15,7 +15,7 @@ type Tweet struct {
 	Nome       string    //20 bytes
 	Localidade string    //20 bytes
 	Data       time.Time //10 bytes
-	Hashtags   []Hashtag // registros associados com o tweet
+	Hashtags   []Hashtag //registros associados com o tweet
 	Mensagem   string    //280 bytes
 }
 
@@ -27,19 +27,19 @@ type Hashtag struct {
 }
 
 func (t Tweet) Converte() []byte {
-	aux := make([]byte, tamanhoTweet)           //slice é um vetor dinânimo
-	binary.PutVarint(aux[0:10], t.ID)           //estou passando as posições de 0 até 10 para a variável ID da struct Tweet
-	copy(aux[10:30], t.Nome)                    //[10:30] onde começa e o byte limite+1
-	copy(aux[30:50], t.Localidade)              //string's são internamente representadas por slice de bytes, sendo assim copy
+	aux := make([]byte, tamanhoTweet)			//alocando uma área que pode armazenar um Tweet
+	binary.PutVarint(aux[0:10], t.ID)           //escreve a variável ID
+	copy(aux[10:30], t.Nome)             		//escreve a variável Nome
+	copy(aux[30:50], t.Localidade)              //escreve a localidade
 	binary.PutVarint(aux[50:60], t.Data.Unix()) //retorna a data em segundos
-	copy(aux[60:340], t.Mensagem)
+	copy(aux[60:340], t.Mensagem)				//escreve a mensagem
 
 	return aux
 }
 
 func (t *Tweet) Desconverte(aux []byte) error { //ponteiro para poder alterar os dados
 	if len(aux) != tamanhoTweet {
-		return fmt.Errorf("Tamanho Inválido, esperava %d mas recebeu %d", tamanhoTweet, len(aux))
+		return fmt.Errorf("Tamanho inválido, esperava %d mas recebeu %d", tamanhoTweet, len(aux))
 	}
 	t.ID, _ = binary.Varint(aux[0:10])
 	t.Nome = strings.Trim(string(aux[10:30]), "\x00")
@@ -56,15 +56,15 @@ func (t *Tweet) IDRegistro() int64 {
 }
 
 func (h Hashtag) Converte() []byte {
-	aux := make([]byte, tamanhoHashtag) //slice é um vetor dinânimo
-	binary.PutVarint(aux[0:10], h.ID)   //estou passando as posições de 0 até 10 para a variável ID da struct Tweet
-	copy(aux[10:110], h.Texto)          //[10:30] onde começa e o byte limite+1
+	aux := make([]byte, tamanhoHashtag) 
+	binary.PutVarint(aux[0:10], h.ID)   //converte o ID e escreve em aux
+	copy(aux[10:110], h.Texto)          //escreve o texto das hashtags
 	return aux
 }
 
 func (h *Hashtag) Desconverte(aux []byte) error { //ponteiro para poder alterar os dados
 	if len(aux) != tamanhoHashtag {
-		return fmt.Errorf("Tamanho Inválido, esperava %d mas recebeu %d", tamanhoHashtag, len(aux))
+		return fmt.Errorf("Tamanho inválido, esperava %d mas recebeu %d", tamanhoHashtag, len(aux))
 	}
 	h.ID, _ = binary.Varint(aux[0:10])
 	h.Texto = strings.Trim(string(aux[10:110]), "\x00")

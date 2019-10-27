@@ -18,6 +18,7 @@ func NovoIndiceSecundarioNeN(nome string) (*IndiceSecundarioNeN, error) {
 	if err != nil {
 		return nil, err
 	}
+	// stat retorna uma struct com informações sobre o arquivo
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err

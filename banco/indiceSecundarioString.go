@@ -18,10 +18,12 @@ type IndiceSecundarioString struct {
 }
 
 func NovoIndiceSecundarioString(nome string, tamanho int64, unico bool) (*IndiceSecundarioString, error) {
+	//abre o arquivo e se não exitir já será criado
 	file, err := os.OpenFile(nome+"-indice.bin", os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		return nil, err
 	}
+	// Stat retorna uma struct de informações sobre o arquivo
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err
@@ -42,10 +44,11 @@ func (i *IndiceSecundarioString) Inserir(valor string, endereco int64) error {
 		//escreve na proxima posiçao
 		aux := make([]byte, i.tamanhoRegistro)
 		copy(aux[0:i.tamanhoValor], valor)
+		//escrever codificado em aux
 		binary.PutVarint(aux[i.tamanhoValor:i.tamanhoValor+10], endereco)
 		n, err := i.file.Write(aux)
 		if err != nil {
-			return fmt.Errorf("falha ao escrever no arquivo de indice, err: %v", err)
+			return fmt.Errorf("Falha ao escrever no arquivo de indice, err: %v", err)
 		}
 		i.size += int64(n)
 		i.file.Sync()
