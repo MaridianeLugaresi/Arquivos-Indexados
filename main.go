@@ -98,7 +98,7 @@ func (b *db) topHashtags() error {
 		fmt.Printf("Total de hashtags: %d, mas mostrando apenas 500\n", maximoRegistros)
 		maximoRegistros = 500
 	}
-	fmt.Printf("ordenando registros\n")
+	fmt.Printf("Ordenando registros\n")
 	hashtags := make([]*banco.Hashtag, 0, len(hashtagsMap))
 	for _, hashtag := range hashtagsMap {
 		hashtags = append(hashtags, hashtag)
@@ -106,7 +106,7 @@ func (b *db) topHashtags() error {
 	sort.Slice(hashtags, func(i, j int) bool { return hashtags[i].TotalTweets > hashtags[j].TotalTweets })
 	hashtags = hashtags[0:maximoRegistros]
 	fmt.Printf("Termino ordenacao dos registros\n")
-	fmt.Printf("posicao | TotalTweets | ID | Texto\n")
+	fmt.Printf("Posicao | TotalTweets | ID | Texto\n")
 	for i, h := range hashtags {
 		fmt.Printf("%d | %d | %d | %s\n", i+1, h.TotalTweets, h.ID, h.Texto)
 	}
@@ -135,7 +135,12 @@ func (b *db) tweetsPorHashtag(texto string) {
 	}
 }
 
+func (b *db) buscaID(id int64){
+	
+}
+
 func main() {
+	var id int64
 	tabelaHashtags, err := banco.NovaTabelaHashtags()
 	if err != nil {
 		log.Fatalf("Falha ao criar tabela de hashtags, err: %v", err)
@@ -150,12 +155,12 @@ func main() {
 	}
 	for {
 		var opcao int
-		fmt.Println("\n1: importar tweets dentro da pasta dados")
-		fmt.Println("2: hashtags mais usadas")
-		fmt.Println("3: buscar tweets com determinada hashtag")
-		fmt.Println("4: buscar tweet por ID")
+		fmt.Println("\n\n1: Importar tweets dentro da pasta dados")
+		fmt.Println("2: Hashtags mais usadas")
+		fmt.Println("3: Buscar tweets com determinada hashtag")
+		fmt.Println("4: Buscar tweet por ID")
 		fmt.Println("5: Sair")
-		fmt.Println("escolha uma das opções:")
+		fmt.Println("Escolha uma das opções:")
 		fmt.Scanln(&opcao)
 		switch opcao {
 		case 1:
@@ -164,7 +169,7 @@ func main() {
 				fmt.Printf("Erro na importaçao, possivelmente o banco esteja invalido agora, err: %v", err)
 				return
 			}
-			fmt.Println("importacao terminou com sucesso")
+			fmt.Println("Importacao terminou com sucesso")
 		case 2:
 			err := b.topHashtags()
 			if err != nil {
@@ -173,12 +178,15 @@ func main() {
 			}
 		case 3:
 			var texto string
-			fmt.Println("digite o texto da hashtag (sem o #) e aperte enter:")
+			fmt.Println("Digite o texto da hashtag (sem o #) e aperte enter:")
 			fmt.Scanln(&texto)
 			fmt.Printf("Buscando tweets com a hashtag: %s\n", texto)
 			b.tweetsPorHashtag(texto)
 		case 4:
-			fmt.Println("opcao 4 selecionada")
+			fmt.Println("Digite o ID do Tweeter desejado e aperte enter:")
+			fmt.Scanln(&id)
+			fmt.Println("Buscando tweets pelo ID:", id)
+			b.buscaID(id)
 		case 5:
 			b.hashtags.Close()
 			b.tweets.Close()
