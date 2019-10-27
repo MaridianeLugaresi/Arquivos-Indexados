@@ -18,7 +18,7 @@ type IndiceSecundarioString struct {
 }
 
 func NovoIndiceSecundarioString(nome string, tamanho int64, unico bool) (*IndiceSecundarioString, error) {
-	//abre o arquivo e se não exitir já será criado
+	//abre o arquivo e se não existir já será criado
 	file, err := os.OpenFile(nome+"-indice.bin", os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		return nil, err
