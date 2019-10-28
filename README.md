@@ -23,3 +23,6 @@ A opção 3 chama a função tweetsPorHashtag que internamento faz uma busca por
 A opção 4 ainda não foi implementada.
 
 A opção 5 sai do programa.
+
+Para executar o programa em máquinas que não possuem a linguagem instalada, segue link para efetuar o download dos arquivos compilados:
+https://github.com/MaridianeLugaresi/Arquivos-Indexados/releases/tag/v0.1.0

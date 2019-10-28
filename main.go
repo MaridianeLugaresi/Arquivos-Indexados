@@ -136,7 +136,12 @@ func (b *db) tweetsPorHashtag(texto string) {
 }
 
 func (b *db) buscaID(id int64){
-	
+	tweet := banco.Tweet{}
+
+	err := b.tweets.BuscaPorID(id, &tweet)
+	if err != nil {
+		log.Printf("Falha ao buscar o ID requisitado, erro: %v", err)
+	}
 }
 
 func main() {
