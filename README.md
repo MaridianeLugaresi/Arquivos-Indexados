@@ -18,8 +18,11 @@ A opção 1 chama a função Importa que grava os dados no diretório atual na p
 
 A opção 2 chama a função topHashtags que internamente conta o número de ocorrências das hastags, ordena os Tweet's e depois mostra a posicao, o total de Tweets, o ID e o texto do Tweet.
 
-A opção 3 chama a função tweetsPorHashtag que internamento faz uma busca por texto e uma busca por hashtag e depois mostra os dados do ID, o Nome, a Data, a Localidade e as Hashtags do proprio Tweet.
+A opção 3 chama a função tweetsPorHashtag que internamente faz uma busca por texto e uma busca por hashtag e depois mostra os dados do ID, o Nome, a Data, a Localidade e as Hashtags do proprio Tweet.
 
 A opção 4 ainda não foi implementada.
 
 A opção 5 sai do programa.
+
+Para executar o programa em máquinas que não possuem a linguagem instalada, segue link para efetuar o download dos arquivos compilados:
+https://github.com/MaridianeLugaresi/Arquivos-Indexados/releases/tag/v0.1.0

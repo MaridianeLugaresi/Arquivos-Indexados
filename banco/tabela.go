@@ -224,6 +224,7 @@ func (t *TabelaHashtags) BuscaHashtagsPorTweet(tweetID int64) ([]Hashtag, error)
 
 func (t *TabelaHashtags) ListaHashtagsComCounts() (map[int64]*Hashtag, error) {
 	log.Print("Buscando todas as hashtags (busca sequencial)")
+	//adicionado todas as hashtags em um hash map
 	hashtags := map[int64]*Hashtag{}
 	aux := make([]byte, tamanhoHashtag)
 	t.file.Seek(0, inicioArquivo)

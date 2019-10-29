@@ -22,7 +22,8 @@ type db struct {
 
 func (b *db) importa(diretorio string) error {
 	// https://progolang.com/listing-files-and-directories-in-go/
-	arquivos, err := filepath.Glob(filepath.Join(diretorio, "*.data")) //retorna em arquivos todos aquele que encontrou
+	//retorna em arquivos todos aquele que encontrou
+	arquivos, err := filepath.Glob(filepath.Join(diretorio, "*.data"))
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,12 @@ func (b *db) tweetsPorHashtag(texto string) {
 }
 
 func (b *db) buscaID(id int64){
-	
+	tweet := banco.Tweet{}
+
+	err := b.tweets.BuscaPorID(id, &tweet)
+	if err != nil {
+		log.Printf("Falha ao buscar o ID requisitado, erro: %v", err)
+	}
 }
 
 func main() {
