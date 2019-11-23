@@ -1,3 +1,5 @@
+//Cria vinculo entre o ID da hashtag e o ID do tweet
+
 package banco
 
 import (

@@ -1,3 +1,5 @@
+//Criado para fazer a busca de uma forma mais eficaz
+
 package banco
 
 import (
@@ -88,7 +90,7 @@ func (i *IndicePrimario) Inserir(id int64, endereco int64) error {
 			//achamos o registro que é menor que o id passado
 			i.file.Seek(deslocamento+tamanhoIndice, finalArquivo)
 			//ReadAll le todo o arquivo a partir da posição atual ao final, o cursor vai estar apontando para o final do arquivo
-			restante, err := ioutil.ReadAll(i.file) 
+			restante, err := ioutil.ReadAll(i.file)
 			if err != nil {
 				return fmt.Errorf("Falha ao ler o restante do arquivo, err: %v", err)
 			}
