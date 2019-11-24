@@ -13,7 +13,7 @@ type TabelaTweets struct {
 	proximoEndereco int64
 
 	file           *os.File
-	indicePrimario *IndicePrimario
+	indicePrimario *IndicePrimario //guarda o ID
 	tabelaHashtags *TabelaHashtags
 }
 

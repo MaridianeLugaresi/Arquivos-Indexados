@@ -1,3 +1,4 @@
+//Armazena o texto da hashtag e o ID
 package banco
 
 import (

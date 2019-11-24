@@ -143,6 +143,10 @@ func (b *db) buscaID(id int64){
 	if err != nil {
 		log.Printf("Falha ao buscar o ID requisitado, erro: %v", err)
 	}
+
+	fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", tweet.ID, tweet.Nome, tweet.Data.Format(time.RFC3339), tweet.Localidade)
+	fmt.Printf("Hashtags: %s \n", tweet.Hashtags)
+	fmt.Printf(tweet.Mensagem)
 }
 
 func main() {
