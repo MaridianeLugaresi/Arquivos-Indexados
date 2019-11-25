@@ -20,7 +20,7 @@ A opção 2 chama a função topHashtags que internamente conta o número de oco
 
 A opção 3 chama a função tweetsPorHashtag que internamente faz uma busca por texto e uma busca por hashtag e depois mostra os dados do ID, o Nome, a Data, a Localidade e as Hashtags do proprio Tweet.
 
-A opção 4 ainda não foi implementada.
+A opção 4 faz a pesquisa por um ID informado e retorna todas as informações sobre o Tweet pesquisado.
 
 A opção 5 sai do programa.
 
