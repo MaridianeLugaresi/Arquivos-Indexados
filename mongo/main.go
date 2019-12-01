@@ -3,10 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os" //para trabalhar com arquivos
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +17,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/kevinburke/nacl"
+	"github.com/kevinburke/nacl/secretbox"
 )
 
 type db struct {
@@ -29,12 +33,8 @@ type tweet struct {
 	Nome       string    `bson:"nome"`
 	Localidade string    `bson:"localidade"`
 	Data       time.Time `bson:"data"`
+	Hashtags   []string  `bson:"hashtags"`
 	Mensagem   string    `bson:"mensagem"`
-}
-
-type hashtag struct {
-	Texto       string `bson:"texto"`
-	TotalTweets int64  `bson:"total_tweets"`
 }
 
 func (b *db) importa(diretorio string) error {
@@ -69,27 +69,9 @@ func (b *db) importa(diretorio string) error {
 				continue
 			}
 
-			hashtags := []hashtag{}
-			for _, h := range t.Entities.Hashtags {
-				hashtag := hashtag{}
-				texto := strings.ToLower(h.Text)
-				//retorna apenas um único documento filtrado pelo 2° parametro
-				err := b.hashtags.FindOne(ctx, bson.D{{"texto", texto}}).Decode(&hashtag)
-				if err != nil && err != mongo.ErrNoDocuments {
-					log.Fatalf("Erro desconhecido ao buscar hashtag, err: %v", err)
-				}
-
-				if err == mongo.ErrNoDocuments {
-					// Se não encontrar a hashtag cadastramos ela
-					hashtag.Texto = texto
-					//insere um único documento na colection
-					res, err := b.hashtags.InsertOne(ctx, hashtag)
-					if err != nil {
-						log.Fatalf("Erro desconhecido ao salvar hashtag, err: %v", err)
-					}
-					fmt.Printf("Inseriu documento com ID %v\n", res.InsertedID)
-				}
-				hashtags = append(hashtags, hashtag)
+			hashtags := make([]string, len(t.Entities.Hashtags))
+			for i, h := range t.Entities.Hashtags {
+				hashtags[i] = strings.ToLower(h.Text)
 			}
 
 			registro := tweet{
@@ -97,8 +79,18 @@ func (b *db) importa(diretorio string) error {
 				Nome:       t.User.ScreenName,
 				Localidade: t.User.Location,
 				Data:       data,
+				Hashtags:   hashtags,
 				Mensagem:   t.Text,
 			}
+			key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
+			if err != nil {
+				log.Fatal("Erro ao criar chave criptografica, err:", err)
+			}
+			encrypted := secretbox.EasySeal([]byte(registro.Nome), key)
+			fmt.Println(base64.StdEncoding.EncodeToString(encrypted))
+			registro.Nome = string(encrypted)
+
+			//insere o registro no banco
 			res, err := b.tweets.InsertOne(ctx, registro)
 			if err != nil {
 				log.Fatalf("Erro desconhecido ao salvar o tweet, err: %v", err)
@@ -110,14 +102,119 @@ func (b *db) importa(diretorio string) error {
 }
 
 func (b *db) topHashtags() error {
+	ctx := context.Background()
+	query := mongo.Pipeline{
+		{{"$unwind", "$hashtags"}},
+		{{"$group", bson.D{
+			{"_id", "$hashtags"},
+			{"count", bson.D{
+				{"$sum", 1},
+			}},
+		}}},
+		{{"$sort", bson.D{
+			{"count", -1},
+		}}},
+	}
+	cursor, err := b.tweets.Aggregate(context.Background(), query)
+	if err != nil {
+		log.Fatal("Erro ao agregar hashtags, err: ", err)
+	}
+
+	defer cursor.Close(ctx)
+
+	i := 0
+	fmt.Printf("Posicao | TotalTweets | Texto\n")
+	for cursor.Next(ctx) && i <= 500 {
+		i++
+		resultado := map[string]interface{}{}
+		err := cursor.Decode(&resultado)
+		if err != nil {
+			log.Fatal("Erro ao decodificar, err:", err)
+		}
+
+		fmt.Printf("%d | %d | %s\n", i, resultado["count"], resultado["_id"])
+	}
 	return nil
 }
 
 func (b *db) tweetsPorHashtag(texto string) {
+	ctx := context.Background()
+	cursor, err := b.tweets.Find(context.Background(),
+		bson.D{
+			{"hashtags", texto},
+		})
+	if err != nil {
+		log.Fatal("Erro ao buscar tweets por hashtags, err: ", err)
+	}
 
+	defer cursor.Close(ctx)
+
+	i := 0
+	t := tweet{}
+	fmt.Printf("Posicao | TotalTweets | Texto\n")
+	for cursor.Next(ctx) {
+		err := cursor.Decode(&t)
+		if err != nil {
+			log.Fatal("Erro ao decodificar tweet, err:", err)
+		}
+		i++
+		hashtags := ""
+		for _, hashtag := range t.Hashtags {
+			hashtags += "[#" + hashtag + "]"
+		}
+		key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
+		if err != nil {
+			log.Fatal("Erro ao criar chave criptografica, err:", err)
+		}
+		nome, err := secretbox.EasyOpen([]byte(t.Nome), key)
+		if err != nil {
+			log.Fatal("Erro a descriptografar tweet, err:", err)
+		}
+		t.Nome = string(nome)
+		fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", t.ID, t.Nome, t.Data.Format(time.RFC3339), t.Localidade)
+		fmt.Printf("Hashtags: %s\n", hashtags)
+		fmt.Println(t.Mensagem)
+	}
 }
 
 func (b *db) buscaID(id int64) {
+	ctx := context.Background()
+	cursor, err := b.tweets.Find(context.Background(),
+		bson.D{
+			{"id", id},
+		})
+	if err != nil {
+		log.Fatal("Erro ao buscar tweets por ID, err: ", err)
+	}
+
+	defer cursor.Close(ctx)
+
+	i := 0
+	tweet := tweet{}
+	fmt.Printf("Tweet:\n")
+	for cursor.Next(ctx) {
+		err := cursor.Decode(&tweet)
+		if err != nil {
+			log.Fatal("Erro ao decodificar tweet, err:", err)
+		}
+		i++
+		hashtags := ""
+		for _, hashtag := range tweet.Hashtags {
+			hashtags += "[#" + hashtag + "]"
+		}
+		key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
+		if err != nil {
+			log.Fatal("Erro ao criar chave criptografica, err:", err)
+		}
+		nome, err := secretbox.EasyOpen([]byte(tweet.Nome), key)
+		if err != nil {
+			log.Fatal("Erro a descriptografar tweet, err:", err)
+		}
+		tweet.Nome = string(nome)
+		fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", tweet.ID, tweet.Nome, tweet.Data.Format(time.RFC3339), tweet.Localidade)
+		fmt.Printf("Hashtags: %s \n", tweet.Hashtags)
+		fmt.Printf(tweet.Mensagem)
+	}
 }
 
 func main() {
