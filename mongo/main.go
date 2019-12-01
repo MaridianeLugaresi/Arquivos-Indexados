@@ -2,22 +2,39 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os" //para trabalhar com arquivos
+	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/dghubble/go-twitter/twitter"
-	"github.com/maridianelugaresi/arquivos-indexados/banco"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/kevinburke/nacl"
+	"github.com/kevinburke/nacl/secretbox"
 )
 
 type db struct {
-	tweets   *banco.TabelaTweets
-	hashtags *banco.TabelaHashtags
+	client   *mongo.Client
+	hashtags *mongo.Collection
+	tweets   *mongo.Collection
+}
+
+type tweet struct {
+	ID         int64     `bson:"id"`
+	Nome       string    `bson:"nome"`
+	Localidade string    `bson:"localidade"`
+	Data       time.Time `bson:"data"`
+	Hashtags   []string  `bson:"hashtags"`
+	Mensagem   string    `bson:"mensagem"`
 }
 
 func (b *db) importa(diretorio string) error {
@@ -27,6 +44,7 @@ func (b *db) importa(diretorio string) error {
 	if err != nil {
 		return err
 	}
+	ctx := context.Background()
 	for _, arquivo := range arquivos { //faz o for passando cada arquivo de arquivos
 		//Abrindo o arquivo
 		log.Printf("Iniciando importação do arquivo: %s", arquivo)
@@ -51,27 +69,12 @@ func (b *db) importa(diretorio string) error {
 				continue
 			}
 
-			hashtags := []banco.Hashtag{}
-			for _, h := range t.Entities.Hashtags {
-				hashtag := banco.Hashtag{}
-				texto := strings.ToLower(h.Text)
-				err := b.hashtags.BuscaPorTexto(texto, &hashtag)
-				if err != nil && err != banco.NaoEncontrado {
-					log.Fatalf("Erro desconhecido ao buscar hashtag, err: %v", err)
-				}
-
-				if err == banco.NaoEncontrado {
-					// Se não encontrar a hashtag cadastramos ela
-					hashtag.Texto = texto
-					err := b.hashtags.Inserir(&hashtag)
-					if err != nil {
-						log.Fatalf("Erro desconhecido ao salvar hashtag, err: %v", err)
-					}
-				}
-				hashtags = append(hashtags, hashtag)
+			hashtags := make([]string, len(t.Entities.Hashtags))
+			for i, h := range t.Entities.Hashtags {
+				hashtags[i] = strings.ToLower(h.Text)
 			}
 
-			registro := banco.Tweet{
+			registro := tweet{
 				ID:         t.ID,
 				Nome:       t.User.ScreenName,
 				Localidade: t.User.Location,
@@ -79,92 +82,162 @@ func (b *db) importa(diretorio string) error {
 				Hashtags:   hashtags,
 				Mensagem:   t.Text,
 			}
-
-			err = b.tweets.Inserir(registro)
+			key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
 			if err != nil {
-				log.Printf("Erro ao salvar Tweet: %v", err)
+				log.Fatal("Erro ao criar chave criptografica, err:", err)
 			}
+			encrypted := secretbox.EasySeal([]byte(registro.Nome), key)
+			fmt.Println(base64.StdEncoding.EncodeToString(encrypted))
+			registro.Nome = string(encrypted)
+
+			//insere o registro no banco
+			res, err := b.tweets.InsertOne(ctx, registro)
+			if err != nil {
+				log.Fatalf("Erro desconhecido ao salvar o tweet, err: %v", err)
+			}
+			fmt.Printf("Inseriu documento com ID %v\n", res.InsertedID)
 		}
 	}
 	return nil
 }
 
 func (b *db) topHashtags() error {
-	hashtagsMap, err := b.hashtags.ListaHashtagsComCounts()
+	ctx := context.Background()
+	query := mongo.Pipeline{
+		{{"$unwind", "$hashtags"}},
+		{{"$group", bson.D{
+			{"_id", "$hashtags"},
+			{"count", bson.D{
+				{"$sum", 1},
+			}},
+		}}},
+		{{"$sort", bson.D{
+			{"count", -1},
+		}}},
+	}
+	cursor, err := b.tweets.Aggregate(context.Background(), query)
 	if err != nil {
-		return fmt.Errorf("Erro na busca de hashtags, err: %v", err)
+		log.Fatal("Erro ao agregar hashtags, err: ", err)
 	}
-	maximoRegistros := len(hashtagsMap)
-	if len(hashtagsMap) > 500 {
-		fmt.Printf("Total de hashtags: %d, mas mostrando apenas 500\n", maximoRegistros)
-		maximoRegistros = 500
-	}
-	fmt.Printf("Ordenando registros\n")
-	hashtags := make([]*banco.Hashtag, 0, len(hashtagsMap))
-	for _, hashtag := range hashtagsMap {
-		hashtags = append(hashtags, hashtag)
-	}
-	sort.Slice(hashtags, func(i, j int) bool { return hashtags[i].TotalTweets > hashtags[j].TotalTweets })
-	hashtags = hashtags[0:maximoRegistros]
-	fmt.Printf("Termino ordenacao dos registros\n")
-	fmt.Printf("Posicao | TotalTweets | ID | Texto\n")
-	for i, h := range hashtags {
-		fmt.Printf("%d | %d | %d | %s\n", i+1, h.TotalTweets, h.ID, h.Texto)
+
+	defer cursor.Close(ctx)
+
+	i := 0
+	fmt.Printf("Posicao | TotalTweets | Texto\n")
+	for cursor.Next(ctx) && i <= 500 {
+		i++
+		resultado := map[string]interface{}{}
+		err := cursor.Decode(&resultado)
+		if err != nil {
+			log.Fatal("Erro ao decodificar, err:", err)
+		}
+
+		fmt.Printf("%d | %d | %s\n", i, resultado["count"], resultado["_id"])
 	}
 	return nil
 }
 
 func (b *db) tweetsPorHashtag(texto string) {
-	hashtag := banco.Hashtag{}
-	err := b.hashtags.BuscaPorTexto(texto, &hashtag)
+	ctx := context.Background()
+	cursor, err := b.tweets.Find(context.Background(),
+		bson.D{
+			{"hashtags", texto},
+		})
 	if err != nil {
-		log.Printf("Erro buscando hashtag, err: %v", err)
-	}
-	tweets, err := b.tweets.BuscaPorHashtag(hashtag.ID)
-	if err != nil {
-		log.Printf("Erro buscando tweets, err: %v", err)
+		log.Fatal("Erro ao buscar tweets por hashtags, err: ", err)
 	}
 
-	for _, t := range tweets {
+	defer cursor.Close(ctx)
+
+	i := 0
+	t := tweet{}
+	fmt.Printf("Posicao | TotalTweets | Texto\n")
+	for cursor.Next(ctx) {
+		err := cursor.Decode(&t)
+		if err != nil {
+			log.Fatal("Erro ao decodificar tweet, err:", err)
+		}
+		i++
 		hashtags := ""
 		for _, hashtag := range t.Hashtags {
-			hashtags += "[#" + hashtag.Texto + "]"
+			hashtags += "[#" + hashtag + "]"
 		}
+		key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
+		if err != nil {
+			log.Fatal("Erro ao criar chave criptografica, err:", err)
+		}
+		nome, err := secretbox.EasyOpen([]byte(t.Nome), key)
+		if err != nil {
+			log.Fatal("Erro a descriptografar tweet, err:", err)
+		}
+		t.Nome = string(nome)
 		fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", t.ID, t.Nome, t.Data.Format(time.RFC3339), t.Localidade)
 		fmt.Printf("Hashtags: %s\n", hashtags)
 		fmt.Println(t.Mensagem)
 	}
 }
 
-func (b *db) buscaID(id int64){
-	tweet := banco.Tweet{}
-
-	err := b.tweets.BuscaPorID(id, &tweet)
+func (b *db) buscaID(id int64) {
+	ctx := context.Background()
+	cursor, err := b.tweets.Find(context.Background(),
+		bson.D{
+			{"id", id},
+		})
 	if err != nil {
-		log.Printf("Falha ao buscar o ID requisitado, erro: %v", err)
+		log.Fatal("Erro ao buscar tweets por ID, err: ", err)
 	}
 
-	fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", tweet.ID, tweet.Nome, tweet.Data.Format(time.RFC3339), tweet.Localidade)
-	fmt.Printf("Hashtags: %s \n", tweet.Hashtags)
-	fmt.Printf(tweet.Mensagem)
+	defer cursor.Close(ctx)
+
+	i := 0
+	tweet := tweet{}
+	fmt.Printf("Tweet:\n")
+	for cursor.Next(ctx) {
+		err := cursor.Decode(&tweet)
+		if err != nil {
+			log.Fatal("Erro ao decodificar tweet, err:", err)
+		}
+		i++
+		hashtags := ""
+		for _, hashtag := range tweet.Hashtags {
+			hashtags += "[#" + hashtag + "]"
+		}
+		key, err := nacl.Load("6368616e676520746869732070617373776f726420746f206120736563726574")
+		if err != nil {
+			log.Fatal("Erro ao criar chave criptografica, err:", err)
+		}
+		nome, err := secretbox.EasyOpen([]byte(tweet.Nome), key)
+		if err != nil {
+			log.Fatal("Erro a descriptografar tweet, err:", err)
+		}
+		tweet.Nome = string(nome)
+		fmt.Printf("\nID: %d Nome: %s Data: %s Localidade: %s\n", tweet.ID, tweet.Nome, tweet.Data.Format(time.RFC3339), tweet.Localidade)
+		fmt.Printf("Hashtags: %s \n", tweet.Hashtags)
+		fmt.Printf(tweet.Mensagem)
+	}
 }
 
 func main() {
-	var id int64
-	tabelaHashtags, err := banco.NovaTabelaHashtags()
+	//https://github.com/mongodb/mongo-go-driver
+	//Cria o client para depois se conectar
+	client, err := mongo.NewClient(options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
-		log.Fatalf("Falha ao criar tabela de hashtags, err: %v", err)
+		log.Fatal("Falha ao se conectar com o banco:", err)
 	}
-	tabelaTweets, err := banco.NovaTabelaTweets(tabelaHashtags)
+	//Conecta com o banco
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err = client.Connect(ctx)
 	if err != nil {
-		log.Fatalf("Falha ao criar tabela de tweets, err: %v", err)
+		log.Fatal("Falha ao se conectar com o banco:", err)
 	}
 	b := &db{
-		tweets:   tabelaTweets,
-		hashtags: tabelaHashtags,
+		client:   client,
+		hashtags: client.Database("trabalho").Collection("hashtags"),
+		tweets:   client.Database("trabalho").Collection("tweets"),
 	}
+
 	for {
-		var opcao int
+		var opcao, id int64
 		fmt.Println("\n\n1: Importar tweets dentro da pasta dados")
 		fmt.Println("2: Hashtags mais usadas")
 		fmt.Println("3: Buscar tweets com determinada hashtag")
@@ -198,8 +271,6 @@ func main() {
 			fmt.Println("Buscando tweets pelo ID:", id)
 			b.buscaID(id)
 		case 5:
-			b.hashtags.Close()
-			b.tweets.Close()
 			return
 		}
 	}
